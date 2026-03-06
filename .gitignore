@@ -1,0 +1,9 @@
+target/
+validation-report*.json
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.agent-hub/
+review-*.txt

@@ -1,0 +1,18 @@
+[package]
+name = "agent-hub-mcp"
+version = "1.0.0"
+edition = "2024"
+description = "Local multi-agent MCP server and orchestrator for Claude Code, Codex/OpenAI, and Gemini CLI"
+rust-version = "1.85"
+
+[dependencies]
+anyhow = "1.0.100"
+chrono = { version = "0.4.42", features = ["serde"] }
+clap = { version = "4.5.53", features = ["derive"] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
+sysinfo = "0.37.2"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+wait-timeout = "0.2.1"
+which = "8.0.0"
