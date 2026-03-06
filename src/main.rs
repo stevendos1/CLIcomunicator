@@ -759,7 +759,7 @@ fn ensure_thread(
             row_to_thread,
         )
         .optional()?;
-    if let Some(_) = existing {
+    if existing.is_some() {
         let mut updates = Vec::new();
         let mut params_vec: Vec<Value> = Vec::new();
         if let Some(title) = title {
@@ -939,6 +939,7 @@ fn require_non_empty(value: &str, field: &str) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_job(
     conn: &Connection,
     agent: Option<&str>,
@@ -1020,6 +1021,7 @@ fn create_job(
     get_job(conn, &job_id)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn set_job_status(
     conn: &Connection,
     job_id: &str,
@@ -1036,10 +1038,8 @@ fn set_job_status(
     stderr_path: Option<&str>,
     attempts_increment: bool,
 ) -> Result<Job> {
-    let output_json_text = output_json
-        .map(|v| serde_json::to_string_pretty(v))
-        .transpose()?;
-    let meta_text = meta.map(|v| serde_json::to_string_pretty(v)).transpose()?;
+    let output_json_text = output_json.map(serde_json::to_string_pretty).transpose()?;
+    let meta_text = meta.map(serde_json::to_string_pretty).transpose()?;
     let mut sql = String::from("UPDATE jobs SET status = ?, updated_at = ?");
     let mut values: Vec<Box<dyn rusqlite::ToSql>> =
         vec![Box::new(status.to_string()), Box::new(utc_now())];
@@ -2142,6 +2142,7 @@ fn cmd_list_agents() -> Result<Value> {
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_submit(
     agent: Option<String>,
     provider: Option<String>,
@@ -2188,7 +2189,7 @@ fn cmd_submit(
     )?;
     let dispatch = dispatch_once()?;
     if wait {
-        let waited = wait_for_jobs(&[job.id.clone()], timeout_seconds)?;
+        let waited = wait_for_jobs(std::slice::from_ref(&job.id), timeout_seconds)?;
         return Ok(json!({
             "ok": true,
             "job": waited["jobs"][0].clone(),
@@ -2199,6 +2200,7 @@ fn cmd_submit(
     Ok(json!({"ok": true, "job": job, "dispatch": dispatch}))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_submit_supervised(
     title: Option<String>,
     cwd: Option<String>,
@@ -2216,12 +2218,12 @@ fn cmd_submit_supervised(
 ) -> Result<Value> {
     let reviewers: Vec<ReviewerInput> = reviewers_json
         .as_deref()
-        .map(|raw| serde_json::from_str(raw))
+        .map(serde_json::from_str)
         .transpose()?
         .unwrap_or_default();
     let synthesis: Option<SynthesisInput> = synthesis_json
         .as_deref()
-        .map(|raw| serde_json::from_str(raw))
+        .map(serde_json::from_str)
         .transpose()?;
 
     let conn = open_connection()?;
@@ -2594,19 +2596,16 @@ fn handle_tool_call(name: &str, arguments: Value) -> Value {
                 arguments.get("timeoutSeconds").and_then(|v| v.as_i64()),
             )
         }
-        "agenthub_get_thread" => {
-            let conn = open_connection().and_then(|conn| {
-                init_db(&conn)?;
-                get_thread(
-                    &conn,
-                    arguments
-                        .get("threadId")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default(),
-                )
-            });
-            conn
-        }
+        "agenthub_get_thread" => open_connection().and_then(|conn| {
+            init_db(&conn)?;
+            get_thread(
+                &conn,
+                arguments
+                    .get("threadId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default(),
+            )
+        }),
         "agenthub_add_thread_memory" => cmd_add_memory(
             arguments
                 .get("threadId")
@@ -2665,7 +2664,7 @@ fn write_mcp_message(message: &Value, framing: McpFraming) -> Result<()> {
             write!(
                 stdout,
                 "Content-Length: {}\r\n\r\n{}",
-                payload.as_bytes().len(),
+                payload.len(),
                 payload
             )?;
         }
@@ -3004,4 +3003,45 @@ fn main() -> Result<()> {
         return Ok(());
     }
     run_mcp_server()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_id_uses_prefix() {
+        let value = new_id("job");
+        assert!(value.starts_with("job_"));
+        assert!(value.len() > 4);
+    }
+
+    #[test]
+    fn normalize_depends_on_removes_blanks_and_duplicates() {
+        let input = vec![
+            " alpha ".to_string(),
+            "".to_string(),
+            "beta".to_string(),
+            "alpha".to_string(),
+            "  ".to_string(),
+            "beta".to_string(),
+            "gamma".to_string(),
+        ];
+
+        let result = normalize_depends_on(&input);
+
+        assert_eq!(result, vec!["alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn require_non_empty_rejects_whitespace_only_values() {
+        let err = require_non_empty("   ", "prompt").unwrap_err().to_string();
+        assert!(err.contains("prompt"));
+    }
+
+    #[test]
+    fn truncate_text_respects_limit_without_padding() {
+        assert_eq!(truncate_text(Some("hello"), 10), "hello");
+        assert!(!truncate_text(Some("abcdefghijkl"), 5).is_empty());
+    }
 }
